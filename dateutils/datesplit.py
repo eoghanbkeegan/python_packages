@@ -1,153 +1,96 @@
 # -*- coding: utf-8 -*-
 """
-Created on Tue Jun 11 21:39:25 2019
+Created on Fri Jun 14 19:41:27 2019
 
-@author: eoghan keegan, 36379, strategic insights
+@author: eoghan keegan, 36379
 """
 
-import calendar
+import pandas
 import datetime
-import itertools
+import calendar
+import dateutil
 
 class DateTimeSplit:
     """
-    class for splitting dates into a given range for queries against databases to avoid spool issues
+    split two dates into a dictionary of start and end dates with the start 
+    dates being the keys and the end dates being the values.
     """
-
-    def __init__(self, start, end):
+    
+    def __init__(self, start, end, split=1):
         """
-        initialize datetime split class with start and end date
-
-        :param str start the date from which to start the range
-        :param str end the date from which to end the range
+        initialise the class
+        
+        :param *str* start the start date of the range
+        :param *str* end the end date of the range
+        :param *str* or *int* split the division into which to split the dates
+        can be one of 'monthly', 'quarterly' or integer (default=1)
         """
-
-        fmts = ['{0}'.format(a)+join+'{0}'.format(b)+join+'{0}'.format(c) for a, b, c in [(x, y, z) for x, y, z in list(itertools.permutations(['%d', '%m', '%y'])) + list(itertools.permutations(['%d', '%m', '%Y']))] for join in ['-', '/', '.', ' ', '', ]]
-
-        fmts = fmts + ['1'+fmt for fmt in fmts]
-
-        if start is None or end is None:
-            raise ValueError('start and end must not be None')
-        else:
-            for fmt in fmts:
-                try:
-                    start_dt = datetime.datetime.strptime(start, '{0}'.format(fmt))
-                    end_dt = datetime.datetime.strptime(end, '{0}'.format(fmt))
-                    self.start_dt = start_dt
-                    self.end_dt = end_dt
-                    self.fmt = fmt
-                except Exception as e:
-                    if 'day is out of range for month' in str(e):
-                        raise ValueError(e)
-                    else:
-                        pass
         
         self.start = start
         self.end = end
-        self.date_fmt = '%Y-%m-%d'
-        
-    def get_quarter(self, date, prev=False):
-        """
-        get quarter of date
-
-        :param datetime date the date from which to extract the quarter
-        :param boolean prev whether to return the previous quarter default(False)
-        """
-
-        quarters = [(4, -1), (1, 0), (2, 0), (3, 0), (4, 0)]
-
-        if prev:
-            add = 0
-        else:
-            add = 1
-
-        quarter, year_diff = (quarters[((date.month - 1) // 3) + add])
-
-        return (date.year + year_diff, quarter)
-    
-    def split_dates_into_range(self, start, end, split, delta, fmt):
-        """
-        split two dates into a given range. the range can be monthly, quarterly or defined by an integer division
-
-        :param datetime start the date from which to start the range
-        :param datetime end the date from which to end the range
-        :param str/int split the split in which to divide the dates
-        :param delta the delta between the start and end dates
-        :param str fmt the format of the given dates
-        """
-        
-        date_dict = dict()
-        
-        if split == 'monthly':
-            
-            last_date = datetime.datetime(start.year, start.month, calendar.monthrange(start.year, start.month)[1])
-            date_dict = {datetime.datetime.strftime(start, fmt): datetime.datetime.strftime(last_date, fmt)}
-            
-            while end >= last_date:
-                next_start = last_date + datetime.timedelta(days=1)
-                last_date = datetime.datetime(next_start.year, next_start.month, calendar.monthrange(next_start.year, next_start.month)[1])
-                if next_start < end:
-                    next_dict = {datetime.datetime.strftime(next_start, fmt):datetime.datetime.strftime(last_date, fmt)}
-                    date_dict = {**date_dict, **next_dict}
-            
-            date_dict[list(date_dict.keys())[-1]] = datetime.datetime.strftime(end, fmt)
-            self.date_dict = date_dict
-
-        elif split == 'quarterly':
-            
-            end_months = [3, 6, 9, 12]
-            quarter = self.get_quarter(start)[1] - 1
-            
-            last_date = datetime.datetime(start.year, end_months[quarter], calendar.monthrange(start.year, end_months[quarter])[1])
-            date_dict = {datetime.datetime.strftime(start, fmt): datetime.datetime.strftime(last_date, fmt)}
-            
-            while end >= last_date:
-                next_start = last_date + datetime.timedelta(days=1)
-                quarter = self.get_quarter(next_start)[1] - 1
-                last_date = datetime.datetime(next_start.year, end_months[quarter], calendar.monthrange(next_start.year, end_months[quarter])[1])
-                if next_start < end:
-                    next_dict = {datetime.datetime.strftime(next_start, fmt):datetime.datetime.strftime(last_date, fmt)}
-                    date_dict = {**date_dict, **next_dict}
-            
-            date_dict[list(date_dict.keys())[-1]] = datetime.datetime.strftime(end, fmt)
-            self.date_dict = date_dict
-
-        else:
-
-            last_date = start + delta
-            date_dict = {datetime.datetime.strftime(start, fmt): datetime.datetime.strftime(last_date, fmt)}
-
-            while end >= last_date:
-                next_start = last_date + datetime.timedelta(days=1)
-                last_date = next_start + delta
-                if next_start < end:
-                    next_dict = {datetime.datetime.strftime(next_start, fmt):datetime.datetime.strftime(last_date, fmt)}
-                    date_dict = {**date_dict, **next_dict}
-                    
-            date_dict[list(date_dict.keys())[-1]] = datetime.datetime.strftime(end, fmt)
-            self.date_dict = date_dict
-        
-        return self.date_dict
-
-    def split_dates(self, split):
-        """
-        define split in which to split dates
-
-        :param str/int split the split in which to divide the dates 
-        """
-        
+        self.split = split
+        self.start_dt = dateutil.parser.parse(start)
+        self.end_dt = dateutil.parser.parse(end)
+        self.fmt = '%Y-%m-%d'
         self.delta = self.end_dt - self.start_dt
+        self.dates = self.__split_dates_into_range()
         
-        if split is None:
-            raise ValueError(type(split) + ' is not a supported split criteria')
-        elif split in ['monthly', 'quarterly']:
-            self.split = split
-            self.split_dates_into_range(self.start_dt, self.end_dt, self.split, self.delta, self.date_fmt)
-        elif isinstance(split, int):
-            self.split = split
-            self.delta = self.delta / split
-            self.split_dates_into_range(self.start_dt, self.end_dt, self.split, self.delta, self.date_fmt)
+    def __split_dates_into_range(self):
+        """
+        split two dates into a dictionary of start and end dates either monthly
+        or quarterly or into n equal divisions
+        """
+        
+        _dates = dict()
+        
+        if self.split == 'monthly':
+            
+            _month_end = calendar.monthrange(self.start_dt.year, self.start_dt.month)[1]
+            _next_end = datetime.datetime(self.start_dt.year, self.start_dt.month, _month_end)
+            _next_start = _next_end + datetime.timedelta(days=1)
+            _dates[self.start] = datetime.datetime.strftime(_next_end, self.fmt)
+                        
+            while _next_end < self.end_dt:
+                _next_start = _next_end + datetime.timedelta(days=1)
+                _month_end = calendar.monthrange(_next_start.year, _next_start.month)[1]
+                _next_end = datetime.datetime(_next_start.year, _next_start.month, _month_end)
+                _dates[datetime.datetime.strftime(_next_start, self.fmt)] = datetime.datetime.strftime(_next_end, self.fmt)
+            
+            _dates[datetime.datetime.strftime(_next_start, self.fmt)] = self.end
+            
+        elif self.split == 'quarterly':
+            
+            _quarter_ends = [3, 6, 9, 12]
+            _quarter = pandas.Timestamp(self.start_dt).quarter
+            _month = _quarter_ends[_quarter - 1]
+            _month_end = calendar.monthrange(self.start_dt.year, _month)[1]
+            _next_end = datetime.datetime(self.start_dt.year, _month, _month_end)
+            _dates[self.start] = datetime.datetime.strftime(_next_end, self.fmt)
+                        
+            while _next_end < self.end_dt:
+                _next_start = _next_end + datetime.timedelta(days=1)
+                _quarter = pandas.Timestamp(_next_start).quarter
+                _month = _quarter_ends[_quarter - 1]
+                _month_end = calendar.monthrange(_next_start.year, _month)[1]
+                _next_end = datetime.datetime(_next_start.year, _month, _month_end)
+                _dates[datetime.datetime.strftime(_next_start, self.fmt)] = datetime.datetime.strftime(_next_end, self.fmt)
+            
+            _dates[datetime.datetime.strftime(_next_start, self.fmt)] = self.end
+                        
+        elif isinstance(self.split, int):
+            
+            _delta = self.delta / self.split
+            _next_end = self.start_dt + _delta
+            _dates[self.start] = datetime.datetime.strftime(_next_end, self.fmt)
+            
+            while _next_end < self.end_dt:
+                _next_start = _next_end + datetime.timedelta(days=1)
+                _next_end = _next_start + _delta
+                _dates[datetime.datetime.strftime(_next_start, self.fmt)] = datetime.datetime.strftime(_next_end, self.fmt)
+            
+            _dates[datetime.datetime.strftime(_next_start, self.fmt)] = self.end
+            
         else:
-            raise ValueError(str(split) + ' is not a supported split criteria')
+            raise ValueError(str(self.split)+' is an unsupported split criteria')
         
-        return self.date_dict
+        return _dates
